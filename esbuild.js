@@ -30,7 +30,7 @@ async function main() {
 			'src/extension.ts'
 		],
 		bundle: true,
-		format: 'cjs',
+		format: 'esm',
 		minify: production,
 		sourcemap: !production,
 		sourcesContent: false,
@@ -38,6 +38,7 @@ async function main() {
 		outfile: 'dist/extension.js',
 		external: ['vscode'],
 		logLevel: 'silent',
+		jsx: 'automatic',
 		plugins: [
 			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,
@@ -50,15 +51,19 @@ async function main() {
 			'src/cli.tsx'
 		],
 		bundle: true,
-		format: 'cjs',
+		format: 'esm',
 		minify: production,
 		sourcemap: !production,
 		sourcesContent: false,
 		platform: 'node',
-		outfile: 'dist/cli.js',
+		outfile: 'dist/cli.mjs',
 		external: [],
 		logLevel: 'silent',
 		jsx: 'automatic',
+		banner: {
+			js: '#!/usr/bin/env node',
+		},
+		packages: 'external',
 		plugins: [
 			esbuildProblemMatcherPlugin,
 		],

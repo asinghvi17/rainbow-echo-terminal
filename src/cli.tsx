@@ -1,6 +1,6 @@
-#!/usr/bin/env node
 import { useState, useEffect } from 'react';
 import { render, Box, Text, useInput, type Key } from 'ink';
+import type { Readable, Writable } from 'stream';
 
 // Rainbow colors in order
 const RAINBOW_COLORS = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta'] as const;
@@ -27,7 +27,11 @@ const RainbowText = ({ text }: { text: string }) => {
 	);
 };
 
-const App = () => {
+interface AppProps {
+	onExit?: () => void;
+}
+
+const App = ({ onExit }: AppProps) => {
 	const [inputText, setInputText] = useState('');
 	const [history, setHistory] = useState<HistoryEntry[]>([]);
 	const [isExiting, setIsExiting] = useState(false);
@@ -53,9 +57,13 @@ const App = () => {
 
 	useEffect(() => {
 		if (isExiting) {
-			process.exit(0);
+			if (onExit) {
+				onExit();
+			} else {
+				process.exit(0);
+			}
 		}
-	}, [isExiting]);
+	}, [isExiting, onExit]);
 
 	return (
 		<Box flexDirection="column" padding={1}>
@@ -97,5 +105,28 @@ const App = () => {
 	);
 };
 
-// Render the app
-render(<App />);
+/**
+ * Render the app with custom streams (for VS Code extension integration)
+ */
+export function renderApp(
+	stdin: Readable,
+	stdout: Writable,
+	stderr: Writable,
+	onExit?: () => void
+) {
+	// Type assertion: Our custom streams implement the necessary properties
+	// that Ink needs (isTTY, columns, rows, setRawMode, etc.)
+	return render(<App onExit={onExit} />, {
+		stdin: stdin as NodeJS.ReadStream,
+		stdout: stdout as NodeJS.WriteStream,
+		stderr: stderr as NodeJS.WriteStream,
+		debug: false,
+		exitOnCtrlC: false, // We handle exit ourselves
+		patchConsole: false, // Don't patch console in extension context
+	});
+}
+
+// When run directly as a CLI (not from the extension)
+if (require.main === module) {
+	render(<App />);
+}
