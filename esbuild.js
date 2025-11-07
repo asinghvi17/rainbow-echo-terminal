@@ -24,46 +24,65 @@ const esbuildProblemMatcherPlugin = {
 };
 
 async function main() {
-	// Build extension
+	// Create alias configuration to deduplicate React
+	const reactPath = require.resolve('react');
+	const reactJsxPath = require.resolve('react/jsx-runtime');
+
+	// Build extension entry point as CommonJS for VS Code compatibility
 	const extensionCtx = await esbuild.context({
 		entryPoints: [
 			'src/extension.ts'
 		],
 		bundle: true,
-		format: 'esm',
+		format: 'cjs',
 		minify: production,
 		sourcemap: !production,
 		sourcesContent: false,
 		platform: 'node',
 		outfile: 'dist/extension.js',
-		external: ['vscode'],
+		external: [
+			'vscode',
+			'../dist/cli' // Mark the actual path as external to prevent bundling
+		],
+		alias: {
+			// Force all React imports to resolve to the same instance
+			'react': reactPath,
+			'react/jsx-runtime': reactJsxPath,
+		},
 		logLevel: 'silent',
 		jsx: 'automatic',
+		target: 'node18',
 		plugins: [
-			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,
 		],
 	});
 
-	// Build CLI
+	// Build CLI as CommonJS for VS Code extension to require
+	// Bundle ink and React together to avoid duplicate React instances
 	const cliCtx = await esbuild.context({
 		entryPoints: [
 			'src/cli.tsx'
 		],
 		bundle: true,
-		format: 'esm',
+		format: 'cjs',
 		minify: production,
 		sourcemap: !production,
 		sourcesContent: false,
 		platform: 'node',
-		outfile: 'dist/cli.mjs',
-		external: [],
+		outfile: 'dist/cli.js',
+		external: [
+			// Only keep yoga external since it has WASM
+			'yoga-layout',
+			'yoga-layout/load'
+		],
+		alias: {
+			// Force all React imports to resolve to the same instance
+			'react': reactPath,
+			'react/jsx-runtime': reactJsxPath,
+		},
 		logLevel: 'silent',
 		jsx: 'automatic',
-		banner: {
-			js: '#!/usr/bin/env node',
-		},
-		packages: 'external',
+		target: 'node18',
 		plugins: [
 			esbuildProblemMatcherPlugin,
 		],

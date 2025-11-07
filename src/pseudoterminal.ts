@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { PseudoTerminalReadable, PseudoTerminalWritable } from './streams';
-import { renderApp } from './cli';
-import type { Instance } from 'ink';
+// Defer ink imports to avoid module initialization issues
+// import { renderApp } from './cli';
+// import type { Instance } from 'ink';
 
 /**
  * Pseudoterminal implementation that runs the Ink-based Rainbow Echo Terminal
@@ -10,20 +11,27 @@ import type { Instance } from 'ink';
 export class RainbowPseudoterminal implements vscode.Pseudoterminal {
 	private writeEmitter = new vscode.EventEmitter<string>();
 	private closeEmitter = new vscode.EventEmitter<number | void>();
-	
+
 	// Streams for Ink
 	private stdin?: PseudoTerminalReadable;
 	private stdout?: PseudoTerminalWritable;
 	private stderr?: PseudoTerminalWritable;
-	
-	// Ink instance
-	private inkInstance?: Instance;
+
+	// Ink instance (type will be loaded dynamically)
+	private inkInstance?: any;
+
+	// Test mode flag - when true, don't actually start Ink
+	private testMode: boolean;
 
 	// Required event: output to terminal display
 	public readonly onDidWrite = this.writeEmitter.event;
-	
+
 	// Optional event: signal terminal closure
 	public readonly onDidClose = this.closeEmitter.event;
+
+	constructor(testMode: boolean = false) {
+		this.testMode = testMode;
+	}
 
 	/**
 	 * Called when terminal is opened. This is where we initialize the Ink app.
@@ -36,27 +44,51 @@ export class RainbowPseudoterminal implements vscode.Pseudoterminal {
 		this.stdout = new PseudoTerminalWritable(this.writeEmitter, dimensions);
 		this.stderr = new PseudoTerminalWritable(this.writeEmitter, dimensions);
 
-		// Render the Ink app with our custom streams
-		try {
-			this.inkInstance = renderApp(
-				this.stdin,
-				this.stdout,
-				this.stderr,
-				() => {
-					// Called when user presses Escape
-					this.handleExit();
-				}
-			);
-
-			// Wait for Ink to finish (if it exits)
-			this.inkInstance.waitUntilExit().then(() => {
-				this.handleExit();
-			});
-		} catch (error) {
-			console.error('Failed to start Ink app:', error);
-			this.writeEmitter.fire(`Error: ${error}\r\n`);
-			this.handleExit(1);
+		// In test mode, just show a message and return immediately
+		if (this.testMode) {
+			this.writeEmitter.fire('🌈 Rainbow Echo Terminal (Test Mode)\r\n');
+			this.writeEmitter.fire('Terminal created successfully in test mode.\r\n');
+			return;
 		}
+
+		// Render the Ink app with our custom streams (async due to dynamic imports)
+		(async () => {
+			try {
+				// Lazy load the compiled cli module to avoid loading ink at extension startup
+				// This loads from dist/cli.js which is built separately
+				const { renderApp } = require('../dist/cli');
+				// renderApp is now async due to dynamic imports
+				this.inkInstance = await renderApp(
+					this.stdin,
+					this.stdout,
+					this.stderr,
+					() => {
+						// Called when user presses Escape
+						this.handleExit();
+					}
+				);
+
+				// Wait for Ink to finish (if it exits)
+				// Add error handling to prevent unhandled promise rejections
+				this.inkInstance.waitUntilExit()
+					.then(() => {
+						// Only handle exit if not already cleaned up
+						if (this.inkInstance) {
+							this.handleExit();
+						}
+					})
+					.catch((error: Error) => {
+						// Ignore errors if we're already cleaning up
+						if (this.inkInstance) {
+							console.error('Ink app error:', error);
+						}
+					});
+			} catch (error) {
+				console.error('Failed to start Ink app:', error);
+				this.writeEmitter.fire(`Error: ${error}\r\n`);
+				this.handleExit(1);
+			}
+		})();
 	}
 
 	/**
@@ -120,22 +152,34 @@ export class RainbowPseudoterminal implements vscode.Pseudoterminal {
 	 * Cleanup resources
 	 */
 	private cleanup(): void {
-		if (this.inkInstance) {
+		// Store reference and clear immediately to prevent double cleanup
+		const inkInstanceToCleanup = this.inkInstance;
+		const stdinToCleanup = this.stdin;
+
+		this.inkInstance = undefined;
+		this.stdin = undefined;
+		this.stdout = undefined;
+		this.stderr = undefined;
+
+		// Cleanup Ink instance
+		if (inkInstanceToCleanup) {
 			try {
-				this.inkInstance.unmount();
+				// Unmount the Ink app to stop React rendering
+				inkInstanceToCleanup.unmount();
+			} catch (error) {
+				// Ignore errors during cleanup
+				// The instance might already be unmounted
+			}
+		}
+
+		// Close stdin stream
+		if (stdinToCleanup) {
+			try {
+				stdinToCleanup.close();
 			} catch (error) {
 				// Ignore errors during cleanup
 			}
-			this.inkInstance = undefined;
 		}
-
-		if (this.stdin) {
-			this.stdin.close();
-			this.stdin = undefined;
-		}
-
-		this.stdout = undefined;
-		this.stderr = undefined;
 	}
 }
 

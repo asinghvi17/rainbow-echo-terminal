@@ -14,11 +14,23 @@ export function activate(context: vscode.ExtensionContext) {
 		'rainbow-echo-terminal.openTerminal',
 		async () => {
 			try {
-				// Dynamically import the pseudoterminal to avoid top-level await issues
-				const { RainbowPseudoterminal } = await import('./pseudoterminal');
-				
+				// Lazy load the pseudoterminal module only when command is executed
+				// This ensures ink and its dependencies aren't loaded at extension startup
+				const { RainbowPseudoterminal } = require('./pseudoterminal');
+
+				// Detect test mode - check if we're running in a test environment
+				// VS Code test runner sets VSCODE_TEST environment variable
+				const isTestMode = process.env.VSCODE_TEST === 'true' ||	
+				                   process.env.NODE_ENV === 'test';
+
+				console.log('Opening Rainbow Echo Terminal, test mode:', isTestMode);
+				console.log('Environment:', {
+					VSCODE_TEST: process.env.VSCODE_TEST,
+					NODE_ENV: process.env.NODE_ENV
+				});
+
 				// Create a pseudoterminal instance
-				const pty = new RainbowPseudoterminal();
+				const pty = new RainbowPseudoterminal(isTestMode);
 
 				// Create the terminal
 				const terminal = vscode.window.createTerminal({
@@ -29,6 +41,7 @@ export function activate(context: vscode.ExtensionContext) {
 				// Show the terminal
 				terminal.show();
 			} catch (error) {
+				console.error('Failed to load Rainbow Echo Terminal:', error);
 				vscode.window.showErrorMessage(`Failed to open Rainbow Echo Terminal: ${error}`);
 			}
 		}

@@ -18,6 +18,11 @@ export class PseudoTerminalReadable extends Readable {
 			return this;
 		};
 		(this as any).isTTY = true;
+
+		// Add ref/unref methods that Node.js ReadStream has
+		// These are used by ink to manage the event loop
+		(this as any).ref = () => this;
+		(this as any).unref = () => this;
 	}
 
 	_read() {
