@@ -52,6 +52,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "ink": "github:asinghvi17/ink#fix-top-level-await",
     "react": "^19.2.0",
     "react-devtools-core": "^6.1.5",
     "yoga-layout": "^3.2.1"
